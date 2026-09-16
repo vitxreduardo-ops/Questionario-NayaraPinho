@@ -229,6 +229,11 @@ body{
       <input id="leadPhone" name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="(00) 00000-0000">
       <div class="err">Informe um número com DDD.</div>
     </div>
+    <div class="field" id="fJob">
+      <label for="leadJob">Profissão</label>
+      <input id="leadJob" name="job" type="text" autocomplete="organization-title" placeholder="O que você faz hoje">
+      <div class="err">Conte qual é a sua profissão.</div>
+    </div>
     <button id="leadBtn" class="primary" type="submit">COMEÇAR O DIAGNÓSTICO</button>
   </form>
   <p class="privacy">Usamos seus dados apenas para enviar o resultado e o acesso ao Grupo VIP.</p>
@@ -340,7 +345,7 @@ body{
   let scores = [0,0,0,0];
   let answersLog = [];
   let leadId = null;
-  let leadData = { nome: "", telefone: "" };
+  let leadData = { nome: "", telefone: "", profissao: "" };
 
   function show(screen) {
     [intro, lead, quiz, result].forEach(el => el.classList.remove("active"));
@@ -402,6 +407,7 @@ body{
   const leadForm  = document.getElementById("leadForm");
   const leadName  = document.getElementById("leadName");
   const leadPhone = document.getElementById("leadPhone");
+  const leadJob   = document.getElementById("leadJob");
   const leadBtn   = document.getElementById("leadBtn");
 
   function digits(v) { return (v || "").replace(/\D/g, ""); }
@@ -427,17 +433,20 @@ body{
     ev.preventDefault();
     const nome = leadName.value.trim().replace(/\s+/g, " ");
     const tel  = digits(leadPhone.value);
+    const prof = leadJob.value.trim().replace(/\s+/g, " ");
     const okNome = setInvalid("fName", !(nome.length >= 3 && nome.includes(" ")));
     const okTel  = setInvalid("fPhone", !(tel.length === 10 || tel.length === 11));
-    if (!okNome || !okTel) return;
+    const okProf = setInvalid("fJob", prof.length < 2);
+    if (!okNome || !okTel || !okProf) return;
 
-    leadData = { nome: nome, telefone: tel };
+    leadData = { nome: nome, telefone: tel, profissao: prof };
     leadBtn.disabled = true;
     leadBtn.textContent = "CARREGANDO...";
 
     leadId = await sbInsert({
       nome: nome,
       telefone: tel,
+      profissao: prof,
       iniciado_em: new Date().toISOString()
     });
 
