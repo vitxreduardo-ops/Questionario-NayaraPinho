@@ -169,6 +169,18 @@ body{
  .royal-photo img{object-position:center 27%}
 }
 
+
+/* ---- tela de captura (nome + telefone) ---- */
+#lead .lead-title{font-family:'Cormorant Garamond',serif;font-size:30px;line-height:1.15;text-align:center;margin:0 0 10px}
+#lead .lead-sub{text-align:center;color:var(--muted);font-size:14px;margin:0 0 26px}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#a99c86;margin-bottom:7px}
+.field input{width:100%;box-sizing:border-box;background:#141210;border:1px solid #3a3229;border-radius:10px;padding:14px 15px;color:#f3ece0;font-family:'Inter',sans-serif;font-size:15px;transition:border-color .2s,box-shadow .2s}
+.field input:focus{outline:none;border-color:var(--gold);box-shadow:0 0 0 3px rgba(190,155,85,.14)}
+.field .err{display:none;color:#d98b7a;font-size:12px;margin-top:6px}
+.field.invalid input{border-color:#7d4c40}
+.field.invalid .err{display:block}
+#lead .privacy{text-align:center;color:#8F867C;font-size:11px;margin-top:16px;line-height:1.5}
 </style>
 </head>
 <body>
@@ -201,6 +213,27 @@ body{
   </div>
 </div>
 
+<div id="lead" class="screen">
+  <div class="kicker">Antes de começar</div>
+  <div class="lead-title">Para onde enviamos<br>o seu diagnóstico?</div>
+  <p class="lead-sub">Preencha para liberar as 7 perguntas.</p>
+
+  <form id="leadForm" novalidate>
+    <div class="field" id="fName">
+      <label for="leadName">Nome completo</label>
+      <input id="leadName" name="name" type="text" autocomplete="name" placeholder="Seu nome">
+      <div class="err">Escreva seu nome completo.</div>
+    </div>
+    <div class="field" id="fPhone">
+      <label for="leadPhone">WhatsApp</label>
+      <input id="leadPhone" name="phone" type="tel" inputmode="numeric" autocomplete="tel" placeholder="(00) 00000-0000">
+      <div class="err">Informe um número com DDD.</div>
+    </div>
+    <button id="leadBtn" class="primary" type="submit">COMEÇAR O DIAGNÓSTICO</button>
+  </form>
+  <p class="privacy">Usamos seus dados apenas para enviar o resultado e o acesso ao Grupo VIP.</p>
+</div>
+
 <div id="quiz" class="screen">
   <div class="top"><span id="category">Percepção</span><span id="counter">1 / 7</span></div>
   <div class="progress"><div id="bar" class="bar"></div></div>
@@ -227,6 +260,51 @@ body{
 
 <script>
 (function () {
+  /* ============================================================
+     SUPABASE — cole aqui os dados do seu projeto
+     Project Settings > API > Project URL e anon public key
+     ============================================================ */
+  const SUPABASE_URL  = "COLE_AQUI_A_URL";      // ex: https://abcdefgh.supabase.co
+  const SUPABASE_KEY  = "COLE_AQUI_A_ANON_KEY";
+  const SUPABASE_TABLE = "respostas";
+
+  const supabaseOn = () => SUPABASE_URL.startsWith("http") && SUPABASE_KEY.length > 20;
+
+  async function sbInsert(row) {
+    if (!supabaseOn()) { console.warn("Supabase não configurado."); return null; }
+    try {
+      const r = await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}`, {
+        method: "POST",
+        headers: {
+          "apikey": SUPABASE_KEY,
+          "Authorization": `Bearer ${SUPABASE_KEY}`,
+          "Content-Type": "application/json",
+          "Prefer": "return=representation"
+        },
+        body: JSON.stringify(row)
+      });
+      if (!r.ok) throw new Error(await r.text());
+      const data = await r.json();
+      return data && data[0] ? data[0].id : null;
+    } catch (e) { console.error("Supabase insert:", e); return null; }
+  }
+
+  async function sbUpdate(id, patch) {
+    if (!supabaseOn() || !id) return;
+    try {
+      await fetch(`${SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?id=eq.${id}`, {
+        method: "PATCH",
+        headers: {
+          "apikey": SUPABASE_KEY,
+          "Authorization": `Bearer ${SUPABASE_KEY}`,
+          "Content-Type": "application/json",
+          "Prefer": "return=minimal"
+        },
+        body: JSON.stringify(patch)
+      });
+    } catch (e) { console.error("Supabase update:", e); }
+  }
+
   const questions = [
     {c:"Percepção",t:"Percepção",i:"✓",q:"Ao entrar em um ambiente profissional ou social, como você sente que é percebida?",a:["Muitas vezes sinto que preciso me esforçar para ser notada.","Sou percebida, mas nem sempre da forma como gostaria.","Minha presença é notada, mas quero transmitir ainda mais autoridade.","Sinto que comunico segurança, mas sei que posso elevar minha presença."]},
     {c:"Imagem",t:"Imagem",i:"◆",q:"Quando você se arruma, qual dessas situações mais acontece?",a:["Tenho roupas, mas frequentemente não sei o que vestir.","Consigo me vestir bem, mas sinto que falta identidade.","Minha imagem já tem personalidade, mas quero torná-la mais estratégica.","Minha imagem é intencional, mas quero dominar os detalhes que comunicam alto valor."]},
@@ -245,6 +323,7 @@ body{
   ];
 
   const intro = document.getElementById("intro");
+  const lead = document.getElementById("lead");
   const quiz = document.getElementById("quiz");
   const result = document.getElementById("result");
   const category = document.getElementById("category");
@@ -259,9 +338,12 @@ body{
 
   let n = 0;
   let scores = [0,0,0,0];
+  let answersLog = [];
+  let leadId = null;
+  let leadData = { nome: "", telefone: "" };
 
   function show(screen) {
-    [intro, quiz, result].forEach(el => el.classList.remove("active"));
+    [intro, lead, quiz, result].forEach(el => el.classList.remove("active"));
     screen.classList.add("active");
   }
 
@@ -281,6 +363,7 @@ body{
       b.className = "answer";
       b.textContent = txt;
       b.addEventListener("click", function () {
+        answersLog.push({ pergunta: x.q, resposta: txt });
         scores[idx] += 1;
         n += 1;
         if (n < questions.length) {
@@ -296,6 +379,7 @@ body{
   function startQuiz() {
     n = 0;
     scores = [0,0,0,0];
+    answersLog = [];
     show(quiz);
     render();
   }
@@ -306,11 +390,69 @@ body{
     resultTitle.textContent = results[idx][0];
     resultText.textContent = results[idx][1];
     show(result);
+    sbUpdate(leadId, {
+      resultado: results[idx][0],
+      pontuacao: scores,
+      respostas: answersLog,
+      concluido_em: new Date().toISOString()
+    });
   }
 
-  document.getElementById("startBtn").addEventListener("click", startQuiz);
+  /* ---------- captura de nome + telefone ---------- */
+  const leadForm  = document.getElementById("leadForm");
+  const leadName  = document.getElementById("leadName");
+  const leadPhone = document.getElementById("leadPhone");
+  const leadBtn   = document.getElementById("leadBtn");
+
+  function digits(v) { return (v || "").replace(/\D/g, ""); }
+
+  leadPhone.addEventListener("input", function () {
+    const d = digits(this.value).slice(0, 11);
+    let out = d;
+    if (d.length > 2) out = `(${d.slice(0,2)}) ${d.slice(2)}`;
+    if (d.length > 6) {
+      // 11 dígitos = celular (5+4); 10 = fixo/antigo (4+4)
+      const split = d.length > 10 ? 7 : 6;
+      out = `(${d.slice(0,2)}) ${d.slice(2,split)}-${d.slice(split)}`;
+    }
+    this.value = out;
+  });
+
+  function setInvalid(id, bad) {
+    document.getElementById(id).classList.toggle("invalid", bad);
+    return !bad;
+  }
+
+  leadForm.addEventListener("submit", async function (ev) {
+    ev.preventDefault();
+    const nome = leadName.value.trim().replace(/\s+/g, " ");
+    const tel  = digits(leadPhone.value);
+    const okNome = setInvalid("fName", !(nome.length >= 3 && nome.includes(" ")));
+    const okTel  = setInvalid("fPhone", !(tel.length === 10 || tel.length === 11));
+    if (!okNome || !okTel) return;
+
+    leadData = { nome: nome, telefone: tel };
+    leadBtn.disabled = true;
+    leadBtn.textContent = "CARREGANDO...";
+
+    leadId = await sbInsert({
+      nome: nome,
+      telefone: tel,
+      iniciado_em: new Date().toISOString()
+    });
+
+    leadBtn.disabled = false;
+    leadBtn.textContent = "COMEÇAR O DIAGNÓSTICO";
+    startQuiz();
+  });
+
+  document.getElementById("startBtn").addEventListener("click", function () {
+    show(lead);
+    leadName.focus();
+  });
   document.getElementById("restartBtn").addEventListener("click", function () { show(intro); });
   document.getElementById("vipBtn").addEventListener("click", function () {
+    sbUpdate(leadId, { clicou_vip: true });
     window.location.href = "https://chat.whatsapp.com/HbvKUJmkHzf4iGcZgrKOSF";
   });
 })();
